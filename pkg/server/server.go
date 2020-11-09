@@ -1,25 +1,31 @@
 package server
 
 import (
-	"strconv"
-	"strings"
+	"net/url"
 	"bytes"
 	"io"
 	"log"
-	"sync"
 	"net"
+	"strings"
+	"sync"
 )
 
 // HandleFunc ...
-type HandleFunc func(conn net.Conn)
+type HandleFunc func(req *Request)
 
 // Server ...
 type Server struct {
-	addr string
-	mu sync.RWMutex
+	addr     string
+	mu       sync.RWMutex
 	handlers map[string]HandleFunc
 }
 
+// Request ...
+type Request struct {
+	Conn net.Conn
+	QueryParams url.Values
+//	PathParams map[string]string
+}
 // NewServer ....
 func NewServer(addr string) *Server {
 	return &Server{addr: addr, handlers: make(map[string]HandleFunc)}
@@ -42,28 +48,26 @@ func (s *Server) Start() error {
 	}
 
 	for {
-		conn, err := listener.Accept() 
-			if err != nil {
-				log.Print(err)
-				continue
-			}
-		
-		err = s.handle(conn)
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+
+		err = s.handle(&Request{Conn: conn, QueryParams: url.Values{}})
 		if err != nil {
 			log.Print(err)
 			// Идём обслуживать следующего
 			continue
 		}
 
+	}
 
-	}	
-	
 }
 
-
-func (s *Server)handle (conn net.Conn) (err error) {
+func (s *Server) handle(req *Request) (err error) {
 	defer func() {
-		if cerr := conn.Close(); cerr != nil {
+		if cerr := req.Conn.Close(); cerr != nil {
 			if err == nil {
 				err = cerr
 				return
@@ -77,7 +81,7 @@ func (s *Server)handle (conn net.Conn) (err error) {
 
 	buf := make([]byte, 4096)
 
-	n, err := conn.Read(buf)
+	n, err := req.Conn.Read(buf)
 	if err == io.EOF {
 		log.Printf("%s", buf[:n])
 		return nil
@@ -92,11 +96,13 @@ func (s *Server)handle (conn net.Conn) (err error) {
 	data := buf[:n]
 	requestLineDelim := []byte{'\r', '\n'}
 	requestLineEnd := bytes.Index(data, requestLineDelim)
-	if requestLineEnd == -1 {}
+	if requestLineEnd == -1 {
+	}
 
 	requestLine := string(data[:requestLineEnd])
 	parts := strings.Split(requestLine, " ")
-	if len(parts) != 3 {}
+	if len(parts) != 3 {
+	}
 
 	method, path, version := parts[0], parts[1], parts[2]
 	if method != "GET" {
@@ -106,39 +112,26 @@ func (s *Server)handle (conn net.Conn) (err error) {
 	if version != "HTTP/1.1" {
 
 	}
-	if path == "/about"{
-		body := "About Golang Academy"
 
-			_, err = conn.Write([]byte(
-				"HTTP/1.1 200 OK\r\n" +
-				"Content-Length: " + strconv.Itoa(len(body)) + "\r\n" + 
-				"Content-Type: text/html\r\n"+
-				"Connection: close\r\n"+
-				"\r\n"+
-				body,
-			))
+	s.mu.RLock()
+	for _, handler := range s.handlers {
+		pth := path
+		ind := bytes.Index([]byte(pth), []byte("?"))
+		if ind != -1 {
+			pth = pth[:ind]
+		}
+
+		params, err := url.ParseRequestURI(method + ":" + s.addr + ":/" + path)
 		if err != nil {
 			log.Print(err)
+			break
 		}
-	}
 
-	if path == "/" {
-		body := "Welcome to our web-site"
+		req.QueryParams = url.Values(params.Query())
 
-		_, err = conn.Write([]byte(
-			"HTTP/1.1 200 OK\r\n" +
-			"Content-Length: " + strconv.Itoa(len(body)) + "\r\n" + 
-			"Content-Type: text/html\r\n"+
-			"Connection: close\r\n"+
-			"\r\n"+
-			body,
-		 ))
-	if err != nil {
-		log.Print(err)
+		handler(req)
+		break
 	}
-	}
-
 	return nil
 
 }
-

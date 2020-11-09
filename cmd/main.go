@@ -5,7 +5,7 @@ import (
 	//"time"
 //	"fmt"
 //	"io/ioutil"
-	"strconv"
+	//"strconv"
 //	"strings"
 //	"bytes"
 	//"io"
@@ -27,7 +27,12 @@ func main() {
 func execute(host string, port string) (err error) {
 	srv := server.NewServer(net.JoinHostPort(host,port))
 
-	srv.Register("/", func(conn net.Conn) {
+	srv.Register("/payments", func(req *server.Request) {
+		id := req.QueryParams["id"]
+		log.Print(id)
+	})
+
+	/*srv.Register("/", func(conn net.Conn) {
 		body := "Welcome to our web-site"
 
 		_, err = conn.Write([]byte(
@@ -58,7 +63,8 @@ func execute(host string, port string) (err error) {
 		log.Print(err)
 	}
 	})
-
+*/
+	log.Print("server run in ",host +":"+ port)
 	return srv.Start()
 }
 
